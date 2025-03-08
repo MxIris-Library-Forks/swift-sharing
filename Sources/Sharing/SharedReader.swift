@@ -15,7 +15,7 @@ import PerceptionCore
 @dynamicMemberLookup
 @propertyWrapper
 public struct SharedReader<Value> {
-  private let box: Box
+  let box: Box
   #if canImport(SwiftUI)
     @State private var generation = 0
   #endif
@@ -28,17 +28,52 @@ public struct SharedReader<Value> {
   }
 
   init(reference: some Reference<Value>) {
-    #if canImport(SwiftUI)
-      if !isTesting, Value.self is any _IdentifiedCollection.Type {
-        func open(_ reference: some Reference<Value>) -> any Reference<Value> {
-          _CachedReference(base: reference)
-        }
-        self.box = Box(open(reference))
-        return
-      }
-    #endif
     self.box = Box(reference)
   }
+
+  /// Wraps a value in a shared reference.
+  ///
+  /// This can be useful for initializing a `SharedReader` with a default value before it is
+  /// configured with a key:
+  ///
+  /// ```swift
+  /// struct ContentView: View {
+  ///   @SharedReader(value: Config()) var config
+  ///
+  ///   var body: some View {
+  ///     VStack {
+  ///       // ...
+  ///     }
+  ///     .task {
+  ///       try await $config.load(.remoteConfig)
+  ///     }
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// It can also be useful for providing `SharedReader` values to features in previews and tests:
+  ///
+  /// ```swift
+  /// struct CounterView: View {
+  ///   @SharedReader var count: Int
+  ///   // ...
+  /// }
+  ///
+  /// #Preview {
+  ///   CounterView(count: SharedReader(value: 42))
+  /// }
+  /// ```
+  ///
+  /// - Parameter value: A value to wrap.
+  #if compiler(>=6)
+    public init(value: sending Value) {
+      self.init(reference: _BoxReference(wrappedValue: value))
+    }
+  #else
+    public init(value: Value) {
+      self.init(reference: _BoxReference(wrappedValue: value))
+    }
+  #endif
 
   /// Creates a read-only shared reference from a shared reference.
   ///
@@ -90,30 +125,6 @@ public struct SharedReader<Value> {
   public init(projectedValue: Self) {
     self = projectedValue
   }
-
-  /// Constructs a read-only shared value that remains constant.
-  ///
-  /// This can be useful for providing ``SharedReader`` values to features in previews and tests:
-  ///
-  /// ```swift
-  /// struct CounterView: View {
-  ///   @SharedReader var count: Int
-  ///   // ...
-  /// }
-  ///
-  /// #Preview {
-  ///   CounterView(count: .constant(42))
-  /// )
-  /// ```
-  #if compiler(>=6)
-  public static func constant(_ value: sending Value) -> Self {
-    Self(Shared(value: value))
-  }
-  #else
-  public static func constant(_ value: Value) -> Self {
-    Self(Shared(value: value))
-  }
-  #endif
 
   /// The underlying value referenced by the shared variable.
   ///
@@ -173,15 +184,51 @@ public struct SharedReader<Value> {
   /// synchronized. Some persistence strategies, however, may not have the ability to subscribe to
   /// their external source. In these cases, you should call this method whenever you need the most
   /// up-to-date value.
-  public func load() {
-    reference.load()
+  public func load() async throws {
+    try await reference.load()
   }
 
-  private final class Box: @unchecked Sendable {
+  /// Whether or not an associated shared key is loading data from an external source.
+  public var isLoading: Bool {
+    reference.isLoading
+  }
+
+  /// An error encountered during the most recent attempt to load data.
+  ///
+  /// This value is `nil` unless a load attempt failed. It contains the latest error from the
+  /// underlying ``SharedReaderKey``. Access it from `@Shared`'s projected value:
+  ///
+  /// ```swift
+  /// @SharedReader(.fileStorage(.users)) var users: [User] = []
+  ///
+  /// var body: some View {
+  ///   if let loadError = $users.loadError {
+  ///     ContentUnavailableView {
+  ///       Label("Failed to load users", systemImage: "xmark.circle")
+  ///     } description: {
+  ///       Text(loadError.localizedDescription)
+  ///     }
+  ///   } else {
+  ///     ForEach(users) { user in /* ... */ }
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// > When a load error occurs, ``wrappedValue`` retains results from the last successful fetch.
+  /// > Its value will update once a new load succeeds.
+  public var loadError: (any Error)? {
+    reference.loadError
+  }
+
+  final class Box: @unchecked Sendable {
     private let lock = NSRecursiveLock()
     private var _reference: any Reference<Value>
+    #if canImport(Combine)
+      let subject = PassthroughRelay<Value>()
+      private var subjectCancellable: AnyCancellable
+    #endif
     #if canImport(SwiftUI)
-      private var cancellable: AnyCancellable?
+      private var swiftUICancellable: AnyCancellable?
     #endif
     var reference: any Reference<Value> {
       _read {
@@ -193,25 +240,31 @@ public struct SharedReader<Value> {
         lock.lock()
         defer { lock.unlock() }
         yield &_reference
+        #if canImport(Combine)
+          subjectCancellable = _reference.publisher.subscribe(subject)
+        #endif
       }
       set {
-        lock.withLock { _reference = newValue }
+        lock.withLock {
+          _reference = newValue
+          #if canImport(Combine)
+            subjectCancellable = _reference.publisher.subscribe(subject)
+          #endif
+        }
       }
     }
     init(_ reference: any Reference<Value>) {
       self._reference = reference
+      #if canImport(Combine)
+        subjectCancellable = _reference.publisher.subscribe(subject)
+      #endif
     }
     #if canImport(SwiftUI)
       func subscribe(state: State<Int>) {
         guard #unavailable(iOS 17, macOS 14, tvOS 17, watchOS 10) else { return }
         _ = state.wrappedValue
-        func open(_ publisher: some Publisher<Value, Never>) -> AnyCancellable {
-          publisher.dropFirst().sink { _ in
-            state.wrappedValue &+= 1
-          }
-        }
-        let cancellable = open(_reference.publisher)
-        lock.withLock { self.cancellable = cancellable }
+        let cancellable = subject.sink { _ in state.wrappedValue &+= 1 }
+        lock.withLock { swiftUICancellable = cancellable }
       }
     #endif
   }

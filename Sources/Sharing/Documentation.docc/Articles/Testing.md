@@ -51,7 +51,7 @@ interact with a global store of data, they do so in a way that is quarantined fr
 
 ### Testing when using custom persistence strategies
 
-When creating your own custom persistence strategies you must careful to do so in a style that
+When creating your own custom persistence strategies you must be careful to do so in a style that
 is amenable to testing. For example, the ``SharedReaderKey/appStorage(_:store:)-45ltk`` persistence
 strategy that comes with the library uses a ``Dependencies/DependencyValues/defaultAppStorage``
 dependency so that one can inject a custom `UserDefaults` in order to execute in a controlled
@@ -126,9 +126,7 @@ struct EntryPoint: App {
   init() {
     if ProcessInfo.processInfo.environment["UI_TESTING"] != nil {
       prepareDependencies {
-        $0.defaultAppStorage = UserDefaults(
-          suiteName:"\(NSTemporaryDirectory())\(UUID().uuidString)"
-        )!
+        $0.defaultAppStorage = .inMemory
         $0.defaultFileStorage = .inMemory
       }
     }

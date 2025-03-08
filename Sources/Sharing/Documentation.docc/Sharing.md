@@ -49,11 +49,11 @@ also update to hold the freshest data.
 
 The [`@Shared`](<doc:Shared>) property wrapper gives you a succinct and consistent way to persist 
 any kind of data in your application. The library comes with 3 strategies:
-[`appStorage`](<doc:SharedReaderKey/appStorage(_:)-45ltk>),
+[`appStorage`](<doc:SharedReaderKey/appStorage(_:store:)-45ltk>),
 [`fileStorage`](<doc:SharedReaderKey/fileStorage(_:decoder:encoder:)>), and
 [`inMemory`](<doc:SharedReaderKey/inMemory(_:)>). 
 
-The [`appStorage`](<doc:SharedReaderKey/appStorage(_:)-45ltk>) strategy is useful for store small
+The [`appStorage`](<doc:SharedReaderKey/appStorage(_:store:)-45ltk>) strategy is useful for store small
 pieces of simple data in user defaults, such as settings:
 
 ```swift
@@ -146,7 +146,7 @@ complex problems with `@Shared`. Check out [this][examples-dir] directory to see
 
 [sharing-gh]: https://github.com/pointfreeco/swift-sharing
 [examples-dir]: https://github.com/pointfreeco/swift-sharing/tree/main/Examples
-[case-studies-dir]: https://github.com/pointfreeco/swift-sharing/tree/main/Examples/Examples
+[case-studies-dir]: https://github.com/pointfreeco/swift-sharing/tree/main/Examples/CaseStudies
 [firebase-dir]: https://github.com/pointfreeco/swift-sharing/tree/main/Examples/FirebaseDemo
 [firebase]: https://firebase.google.com
 [grdb-dir]: https://github.com/pointfreeco/swift-sharing/tree/main/GRDBDemo
@@ -165,6 +165,7 @@ complex problems with `@Shared`. Check out [this][examples-dir] directory to see
 - <doc:PersistenceStrategies>
 - <doc:MutatingSharedState>
 - <doc:ObservingChanges>
+- <doc:DynamicKeys>
 - <doc:DerivingSharedState>
 - <doc:TypeSafeKeys>
 - <doc:InitializationRules>

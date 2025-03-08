@@ -262,132 +262,124 @@
       AppStorageKeyID(key: key, store: store.wrappedValue)
     }
 
-    fileprivate init(_ key: String, store: UserDefaults?) where Value == Bool {
+    private init(lookup: some Lookup<Value>, key: String, store: UserDefaults?) {
       @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = CastableLookup()
+      self.lookup = lookup
       self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      let store = store ?? defaultStore
+      self.store = UncheckedSendable(store)
+      #if DEBUG
+        if store.responds(to: Selector(("_identifier"))),
+          let suiteName = store.perform(Selector(("_identifier"))).takeUnretainedValue() as? String
+        {
+          let objectID = ObjectIdentifier(store)
+          suites.withLock { suites in
+            defer { suites[suiteName] = objectID }
+            if let id = suites[suiteName], id != objectID {
+              reportIssue(
+                """
+                '@Shared(\(self))' was given a new store object for an existing suite name \
+                (\(suiteName.debugDescription)).
+
+                Shared app storage for a given suite should all share the same store object to \
+                ensure synchronization and observation. For example, define a store as a \
+                'static let' and refer to this single instance when creating shared app storage:
+
+                    extension UserDefaults {
+                      nonisolated(unsafe) static let mySuite = UserDefaults(
+                        suiteName: \(suiteName.debugDescription)
+                      )!
+                    }
+
+                    @Shared(.appStorage(\(key.debugDescription), store: .mySuite) var myProperty
+                """
+              )
+            }
+          }
+        }
+      #endif
+    }
+
+    fileprivate init(_ key: String, store: UserDefaults?) where Value == Bool {
+      self.init(lookup: CastableLookup(), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == Int {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = CastableLookup()
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: CastableLookup(), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == Double {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = CastableLookup()
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: CastableLookup(), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == String {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = CastableLookup()
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: CastableLookup(), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == URL {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = URLLookup()
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: URLLookup(), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == Data {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = CastableLookup()
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: CastableLookup(), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == Date {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = CastableLookup()
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: CastableLookup(), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value: RawRepresentable<Int> {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = RawRepresentableLookup(base: CastableLookup())
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: RawRepresentableLookup(base: CastableLookup()), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value: RawRepresentable<String> {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = RawRepresentableLookup(base: CastableLookup())
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: RawRepresentableLookup(base: CastableLookup()), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == Bool? {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = OptionalLookup(base: CastableLookup())
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: OptionalLookup(base: CastableLookup()), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == Int? {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = OptionalLookup(base: CastableLookup())
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: OptionalLookup(base: CastableLookup()), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == Double? {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = OptionalLookup(base: CastableLookup())
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: OptionalLookup(base: CastableLookup()), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == String? {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = OptionalLookup(base: CastableLookup())
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: OptionalLookup(base: CastableLookup()), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == URL? {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = OptionalLookup(base: URLLookup())
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: OptionalLookup(base: URLLookup()), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == Data? {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = OptionalLookup(base: CastableLookup())
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: OptionalLookup(base: CastableLookup()), key: key, store: store)
     }
 
     fileprivate init(_ key: String, store: UserDefaults?) where Value == Date? {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = OptionalLookup(base: CastableLookup())
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(lookup: OptionalLookup(base: CastableLookup()), key: key, store: store)
     }
 
     fileprivate init<R: RawRepresentable<Int>>(_ key: String, store: UserDefaults?)
     where Value == R? {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = OptionalLookup(base: RawRepresentableLookup(base: CastableLookup()))
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(
+        lookup: OptionalLookup(base: RawRepresentableLookup(base: CastableLookup())),
+        key: key,
+        store: store
+      )
     }
 
     fileprivate init<R: RawRepresentable<String>>(_ key: String, store: UserDefaults?)
     where Value == R? {
-      @Dependency(\.defaultAppStorage) var defaultStore
-      self.lookup = OptionalLookup(base: RawRepresentableLookup(base: CastableLookup()))
-      self.key = key
-      self.store = UncheckedSendable(store ?? defaultStore)
+      self.init(
+        lookup: OptionalLookup(base: RawRepresentableLookup(base: CastableLookup())),
+        key: key,
+        store: store
+      )
     }
     
     fileprivate init<Encoder: TopLevelEncoder, Decoder: TopLevelDecoder>(_ key: String, store: UserDefaults?, encoder: Encoder, decoder: Decoder) where Value: Codable, Encoder.Output == Data, Decoder.Input == Data {
@@ -397,19 +389,13 @@
         self.store = UncheckedSendable(store ?? defaultStore)
       }
 
-    public func load(initialValue: Value?) -> Value? {
-      lookup.loadValue(from: store.wrappedValue, at: key, default: initialValue)
-    }
-
-    public func save(_ value: Value, immediately: Bool) {
-      lookup.saveValue(value, to: store.wrappedValue, at: key)
+    public func load(context: LoadContext<Value>, continuation: LoadContinuation<Value>) {
+      continuation.resume(with: .success(lookupValue(default: context.initialValue)))
     }
 
     public func subscribe(
-      initialValue: Value?,
-      didSet receiveValue: @escaping @Sendable (_ newValue: Value?) -> Void
+      context: LoadContext<Value>, subscriber: SharedSubscriber<Value>
     ) -> SharedSubscription {
-      let previousValue = LockIsolated(initialValue)
       let removeObserver: @Sendable () -> Void
       let keyContainsPeriod = key.contains(".")
       if keyContainsPeriod || key.hasPrefix("@") {
@@ -445,13 +431,14 @@
             """
           )
         }
+        let previousValue = Mutex(context.initialValue)
         let userDefaultsDidChange = NotificationCenter.default.addObserver(
           forName: UserDefaults.didChangeNotification,
           object: store.wrappedValue,
           queue: nil
         ) { _ in
-          let newValue = load(initialValue: initialValue)
-          defer { previousValue.withValue { $0 = newValue } }
+          let newValue = lookupValue(default: context.initialValue)
+          defer { previousValue.withLock { $0 = newValue } }
           func isEqual<T>(_ lhs: T, _ rhs: T) -> Bool? {
             func open<U: Equatable>(_ lhs: U) -> Bool {
               lhs == rhs as? U
@@ -460,21 +447,23 @@
             return open(lhs)
           }
           guard
-            !(isEqual(newValue, previousValue.value) ?? false)
-              || (isEqual(newValue, initialValue) ?? true)
+            !(isEqual(newValue, previousValue.withLock { $0 }) ?? false)
+              || (isEqual(newValue, context.initialValue) ?? true)
           else {
             return
           }
           guard !SharedAppStorageLocals.isSetting
           else { return }
-          DispatchQueue.main.async { receiveValue(newValue) }
+          DispatchQueue.main.async {
+            subscriber.yield(with: .success(newValue))
+          }
         }
         removeObserver = { NotificationCenter.default.removeObserver(userDefaultsDidChange) }
       } else {
         let observer = Observer {
           guard !SharedAppStorageLocals.isSetting
           else { return }
-          receiveValue(load(initialValue: initialValue))
+          subscriber.yield(with: .success(lookupValue(default: context.initialValue)))
         }
         store.wrappedValue.addObserver(observer, forKeyPath: key, context: nil)
         removeObserver = { store.wrappedValue.removeObserver(observer, forKeyPath: key) }
@@ -486,7 +475,7 @@
           object: nil,
           queue: .main
         ) { _ in
-          receiveValue(load(initialValue: initialValue))
+          subscriber.yield(with: .success(lookupValue(default: context.initialValue)))
         }
       } else {
         willEnterForeground = nil
@@ -497,6 +486,15 @@
           NotificationCenter.default.removeObserver(willEnterForeground)
         }
       }
+    }
+
+    public func save(_ value: Value, context _: SaveContext, continuation: SaveContinuation) {
+      lookup.saveValue(value, to: store.wrappedValue, at: key)
+      continuation.resume()
+    }
+
+    private func lookupValue(default initialValue: Value?) -> Value? {
+      lookup.loadValue(from: store.wrappedValue, at: key, default: initialValue)
     }
 
     private final class Observer: NSObject, Sendable {
@@ -528,6 +526,33 @@
   }
 
   extension DependencyValues {
+    /// Default file storage used by ``SharedReaderKey/appStorage(_:)``.
+    ///
+    /// Use this dependency to override the manner in which
+    /// ``SharedReaderKey/appStorage(_:)`` interacts with UserDefaults. For
+    /// example, while your app is running for UI tests you probably do not want your features writing
+    /// changes to your actual UserDefaults suite, which would cause that data to bleed over from test to test.
+    ///
+    /// So, for that situation you can use the ``inMemory`` value so that each
+    /// run of the app starts with a fresh suite that will never interfere with other tests:
+    ///
+    /// ```swift
+    /// import Dependencies
+    /// import Sharing
+    /// import SwiftUI
+    ///
+    /// @main
+    /// struct MyApp: App {
+    ///   init() {
+    ///     if ProcessInfo.processInfo.environment["UITesting"] == "true"
+    ///       prepareDependencies {
+    ///         $0.defaultAppStorage = .inMemory
+    ///       }
+    ///     }
+    ///   }
+    ///   // ...
+    /// }
+    /// ```
     public var defaultAppStorage: UserDefaults {
       get { self[DefaultAppStorageKey.self].value }
       set { self[DefaultAppStorageKey.self].value = newValue }
@@ -540,21 +565,31 @@
   }
 
   private enum DefaultAppStorageKey: DependencyKey {
-    static var testValue: UncheckedSendable<UserDefaults> {
-      UncheckedSendable(
-        UserDefaults(
-          suiteName:
-            "\(NSTemporaryDirectory())co.pointfree.Sharing.\(UUID().uuidString)"
-        )!
-      )
+    static var liveValue: UncheckedSendable<UserDefaults> {
+      UncheckedSendable(.standard)
     }
     static var previewValue: UncheckedSendable<UserDefaults> {
-      testValue
+      UncheckedSendable(.inMemory)
     }
-    static var liveValue: UncheckedSendable<UserDefaults> {
-      UncheckedSendable(UserDefaults.standard)
+    static var testValue: UncheckedSendable<UserDefaults> {
+      UncheckedSendable(.inMemory)
     }
   }
+
+extension UserDefaults {
+  public static var inMemory: UserDefaults {
+    let suiteName: String
+    // NB: Due to a bug in iOS 16 and lower, UserDefaults does not observe changes when using
+    //     file-based suites. Go back to using temporary directory always when we drop iOS 16
+    //     support.
+    if #unavailable(iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1) {
+      suiteName = "co.pointfree.Sharing.\(UUID().uuidString)"
+    } else {
+      suiteName = "\(NSTemporaryDirectory())co.pointfree.Sharing.\(UUID().uuidString)"
+    }
+    return UserDefaults(suiteName: suiteName)!
+  }
+}
 
   private enum AppStorageKeyFormatWarningEnabledKey: DependencyKey {
     static let liveValue = true
@@ -568,7 +603,11 @@
 
   private protocol Lookup<Value>: Sendable {
     associatedtype Value: Sendable
-    func loadValue(from store: UserDefaults, at key: String, default defaultValue: Value?) -> Value?
+    func loadValue(
+      from store: UserDefaults,
+      at key: String,
+      default defaultValue: Value?
+    ) -> Value?
     func saveValue(_ newValue: Value, to store: UserDefaults, at key: String)
   }
 
@@ -581,11 +620,11 @@
       guard let value = store.object(forKey: key) as? Value
       else {
         guard !SharedAppStorageLocals.isSetting
-        else { return defaultValue }
+        else { return nil }
         SharedAppStorageLocals.$isSetting.withValue(true) {
           store.set(defaultValue, forKey: key)
         }
-        return defaultValue
+        return nil
       }
       return value
     }
@@ -604,11 +643,11 @@
       guard let value = store.url(forKey: key)
       else {
         guard !SharedAppStorageLocals.isSetting
-        else { return defaultValue }
+        else { return nil }
         SharedAppStorageLocals.$isSetting.withValue(true) {
           store.set(defaultValue, forKey: key)
         }
-        return defaultValue
+        return nil
       }
       return value
     }
@@ -628,7 +667,6 @@
     ) -> Value? {
       base.loadValue(from: store, at: key, default: defaultValue?.rawValue)
         .flatMap(Value.init(rawValue:))
-        ?? defaultValue
     }
     func saveValue(_ newValue: Value, to store: UserDefaults, at key: String) {
       base.saveValue(newValue.rawValue, to: store, at: key)
@@ -641,6 +679,8 @@
       from store: UserDefaults, at key: String, default defaultValue: Base.Value??
     ) -> Base.Value?? {
       base.loadValue(from: store, at: key, default: defaultValue ?? nil)
+        .flatMap(Optional.some)
+        ?? .none
     }
     func saveValue(_ newValue: Base.Value?, to store: UserDefaults, at key: String) {
       if let newValue {
@@ -710,4 +750,8 @@ private struct CodableLookup<Value: Codable & Sendable, ValueEncoder: TopLevelEn
       return nil
     #endif
   }()
+
+  #if DEBUG
+    private let suites = Mutex<[String: ObjectIdentifier]>([:])
+  #endif
 #endif

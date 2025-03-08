@@ -66,54 +66,27 @@ extension TodosFeature: Codable {
 }
 ```
 
-#### Previews and tests
+#### SwiftUI Views
 
-When a preview is run in an app target, the entry point is also created. And when a test is run in
-an app target, the app runs in the background for the duration of the test. This means if your entry
-point looks something like this:
+There is one nuance to be aware of when using [`@Shared`](<doc:Shared>) and 
+[`@SharedReader`](<doc:SharedReader>) directly in a SwiftUI view. When the view is recreated 
+(which can happen many times and is an intentional design of SwiftUI), the corresponding 
+`@Shared` and `@SharedReader` wrappers can also be created.
 
-```swift
-@Observable
-class AppModel {
-  @ObservationIgnored
-  @Shared(.appStorage("launchCount")) var launchCount = 0
-}
-
-@main
-struct MainApp: App {
-  let model = AppModel()
-
-  var body: some Scene {
-    // ...
-  }
-}
-```
-
-…then the `launchCount` key in user defaults will be accessed and set to `0` if no value currently
-exists. This means that when running a preview or test where you might want to set the default value
-of this key to something else, you will not be able to because the entry point has already set
-it.
-
-The fix is to delay creation of any models until the entry point's `body` is executed. Further, it
-can be a good idea to also not run the `body` when in tests because that can also interfere with
-tests. Here is one way this can be accomplished:
+If you dynamically change the key of the property wrapper in the view, for example like this:
 
 ```swift
-import SwiftUI
-
-@main
-struct MyApp: App {
-  @MainActor
-  static let model = AppModel()
-
-  var body: some Scene {
-    WindowGroup {
-      // NB: Don't run application in tests to avoid interference 
-      //     between the app and the test.
-      if !isTesting {
-        AppView(model: Self.model)
-      }
-    }
-  }
-}
+$value.load(.newKey)
+// or…
+$value = Shared(.newKey)
 ```
+
+…then this key may be reset when the view is recreated. In order to prevent this you can use the
+version of `Shared` and `SharedReader` that works like `@State` in views:
+
+```swift
+@State.Shared(.key) var value
+```
+
+See ``SwiftUICore/State/Shared`` and ``SwiftUICore/State/SharedReader`` for more info, as well
+as the article <doc:DynamicKeys>.

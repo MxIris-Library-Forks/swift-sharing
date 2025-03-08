@@ -2,11 +2,12 @@
   import Combine
   import Foundation
 
-  final class PassthroughRelay<Output>: Publisher {
+  final class PassthroughRelay<Output>: Subject {
     typealias Failure = Never
 
     private let lock: os_unfair_lock_t
-    private var subscriptions = ContiguousArray<Subscription>()
+    private var _upstreams: [any Combine.Subscription] = []
+    private var _downstreams = ContiguousArray<Subscription>()
 
     init() {
       self.lock = os_unfair_lock_t.allocate(capacity: 1)
@@ -14,27 +15,46 @@
     }
 
     deinit {
+      for subscription in _upstreams {
+        subscription.cancel()
+      }
       lock.deinitialize(count: 1)
       lock.deallocate()
     }
 
     func receive(subscriber: some Subscriber<Output, Never>) {
       let subscription = Subscription(upstream: self, downstream: subscriber)
-      lock.withLock { subscriptions.append(subscription) }
+      lock.withLock { _downstreams.append(subscription) }
       subscriber.receive(subscription: subscription)
     }
 
     func send(_ value: Output) {
-      for subscription in lock.withLock({ subscriptions }) {
+      for subscription in lock.withLock({ _downstreams }) {
         subscription.receive(value)
       }
     }
 
+    func send(completion: Subscribers.Completion<Never>) {
+      let subscriptions = lock.withLock {
+        let subscriptions = _downstreams
+        _downstreams.removeAll()
+        return subscriptions
+      }
+      for subscription in subscriptions {
+        subscription.receive(completion: completion)
+      }
+    }
+
+    func send(subscription: any Combine.Subscription) {
+      lock.withLock { _upstreams.append(subscription) }
+      subscription.request(.unlimited)
+    }
+
     private func remove(_ subscription: Subscription) {
       lock.withLock {
-        guard let index = subscriptions.firstIndex(of: subscription)
+        guard let index = _downstreams.firstIndex(of: subscription)
         else { return }
-        subscriptions.remove(at: index)
+        _downstreams.remove(at: index)
       }
     }
 
@@ -89,12 +109,25 @@
         }
       }
 
+      func receive(completion: Subscribers.Completion<Never>) {
+        lock.withLock {
+          downstream?.receive(completion: completion)
+          downstream = nil
+          upstream = nil
+        }
+      }
+
       func request(_ demand: Subscribers.Demand) {
         precondition(demand > 0, "Demand must be greater than zero")
         lock.lock()
         defer { lock.unlock() }
         guard case .some = downstream else { return }
         self.demand += demand
+        guard let upstream else { return }
+        let subscriptions = upstream.lock.withLock { upstream._upstreams }
+        for subscription in subscriptions {
+          subscription.request(.unlimited)
+        }
       }
 
       static func == (lhs: Subscription, rhs: Subscription) -> Bool {

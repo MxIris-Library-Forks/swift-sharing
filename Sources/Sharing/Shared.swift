@@ -16,7 +16,7 @@ import PerceptionCore
 @dynamicMemberLookup
 @propertyWrapper
 public struct Shared<Value> {
-  private let box: Box
+  let box: Box
   #if canImport(SwiftUI)
     @State private var generation = 0
   #endif
@@ -29,30 +29,20 @@ public struct Shared<Value> {
   }
 
   init(reference: any MutableReference<Value>) {
-    #if canImport(SwiftUI)
-      if !isTesting, Value.self is any _MutableIdentifiedCollection.Type {
-        func open(_ reference: some MutableReference<Value>) -> any MutableReference<Value> {
-          _CachedReference(base: reference)
-        }
-        self.box = Box(open(reference))
-        return
-      }
-    #endif
     self.box = Box(reference)
   }
 
   /// Wraps a value in a shared reference.
   ///
-  /// - Parameters:
-  ///   - value: A value to wrap.
+  /// - Parameter value: A value to wrap.
   #if compiler(>=6)
-  public init(value: sending Value) {
-    self.init(reference: _BoxReference(wrappedValue: value))
-  }
+    public init(value: sending Value) {
+      self.init(reference: _BoxReference(wrappedValue: value))
+    }
   #else
-  public init(value: Value) {
-    self.init(reference: _BoxReference(wrappedValue: value))
-  }
+    public init(value: Value) {
+      self.init(reference: _BoxReference(wrappedValue: value))
+    }
   #endif
 
   /// Unwraps a shared reference to an optional value.
@@ -102,8 +92,29 @@ public struct Shared<Value> {
   ///   }
   /// }
   /// ```
-  public var wrappedValue: Value {
-    get {
+  ///
+  /// To mutate this value use ``withLock(_:fileID:filePath:line:column:)``.
+  #if compiler(>=6)
+    public var wrappedValue: Value {
+      get {
+        @Dependency(\.snapshots) var snapshots
+        if snapshots.isAsserting {
+          return reference.snapshot ?? reference.wrappedValue
+        } else {
+          return reference.wrappedValue
+        }
+      }
+      @available(
+        *,
+        unavailable,
+        message: "Use '$shared.withLock' to modify a shared value with exclusive access."
+      )
+      nonmutating set {
+        withLock { $0 = newValue }
+      }
+    }
+  #else
+    public var wrappedValue: Value {
       @Dependency(\.snapshots) var snapshots
       if snapshots.isAsserting {
         return reference.snapshot ?? reference.wrappedValue
@@ -111,20 +122,12 @@ public struct Shared<Value> {
         return reference.wrappedValue
       }
     }
-    @available(
-      *,
-      unavailable,
-      message: "Use '$shared.withLock' to modify a shared value with exclusive access."
-    )
-    nonmutating set {
-      withLock { $0 = newValue }
-    }
-  }
+  #endif
 
   /// Perform an operation on shared state with isolated access to the underlying value.
-  /// 
+  ///
   /// See <doc:MutatingSharedState> for more information.
-  /// 
+  ///
   /// - Parameters
   ///   - operation: An operation given mutable, isolated access to the underlying shared value.
   ///   - fileID: The source `#fileID` associated with the lock.
@@ -276,8 +279,40 @@ public struct Shared<Value> {
   /// synchronized. Some persistence strategies, however, may not have the ability to subscribe to
   /// their external source. In these cases, you should call this method whenever you need the most
   /// up-to-date value.
-  public func load() {
-    reference.load()
+  public func load() async throws {
+    try await reference.load()
+  }
+
+  /// Whether or not an associated shared key is loading data from an external source.
+  public var isLoading: Bool {
+    reference.isLoading
+  }
+
+  /// An error encountered during the most recent attempt to load data.
+  ///
+  /// This value is `nil` unless a load attempt failed. It contains the latest error from the
+  /// underlying ``SharedReaderKey``. Access it from `@Shared`'s projected value:
+  ///
+  /// ```swift
+  /// @Shared(.fileStorage(.users)) var users: [User] = []
+  ///
+  /// var body: some View {
+  ///   if let loadError = $users.loadError {
+  ///     ContentUnavailableView {
+  ///       Label("Failed to load users", systemImage: "xmark.circle")
+  ///     } description: {
+  ///       Text(loadError.localizedDescription)
+  ///     }
+  ///   } else {
+  ///     ForEach(users) { user in /* ... */ }
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// > When a load error occurs, ``wrappedValue`` retains results from the last successful fetch.
+  /// > Its value will update once a new load succeeds.
+  public var loadError: (any Error)? {
+    reference.loadError
   }
 
   /// Requests the underlying value be persisted to an external source.
@@ -289,15 +324,27 @@ public struct Shared<Value> {
   /// save to the external source immediately upon modification. Some persistence strategies,
   /// however, may choose to debounce this work, in which case it may be desirable to tell the
   /// strategy to save more eagerly.
-  public func save() {
-    reference.save()
+  public func save() async throws {
+    try await reference.save()
   }
 
-  private final class Box: @unchecked Sendable {
+  /// An error encountered during the most recent attempt to save data.
+  ///
+  /// This value is `nil` unless a save attempt failed. It contains the latest error from the
+  /// underlying ``SharedKey``.
+  public var saveError: (any Error)? {
+    reference.saveError
+  }
+
+  final class Box: @unchecked Sendable {
     private let lock = NSRecursiveLock()
     private var _reference: any MutableReference<Value>
+    #if canImport(Combine)
+      let subject = PassthroughRelay<Value>()
+      private var subjectCancellable: AnyCancellable
+    #endif
     #if canImport(SwiftUI)
-      private var cancellable: AnyCancellable?
+      private var swiftUICancellable: AnyCancellable?
     #endif
     var reference: any MutableReference<Value> {
       _read {
@@ -309,25 +356,31 @@ public struct Shared<Value> {
         lock.lock()
         defer { lock.unlock() }
         yield &_reference
+        #if canImport(Combine)
+          subjectCancellable = _reference.publisher.subscribe(subject)
+        #endif
       }
       set {
-        lock.withLock { _reference = newValue }
+        lock.withLock {
+          _reference = newValue
+          #if canImport(Combine)
+            subjectCancellable = _reference.publisher.subscribe(subject)
+          #endif
+        }
       }
     }
     init(_ reference: any MutableReference<Value>) {
       self._reference = reference
+      #if canImport(Combine)
+        subjectCancellable = _reference.publisher.subscribe(subject)
+      #endif
     }
     #if canImport(SwiftUI)
       func subscribe(state: State<Int>) {
         guard #unavailable(iOS 17, macOS 14, tvOS 17, watchOS 10) else { return }
         _ = state.wrappedValue
-        func open(_ publisher: some Publisher<Value, Never>) -> AnyCancellable {
-          publisher.dropFirst().sink { _ in
-            state.wrappedValue &+= 1
-          }
-        }
-        let cancellable = open(_reference.publisher)
-        lock.withLock { self.cancellable = cancellable }
+        let cancellable = subject.sink { _ in state.wrappedValue &+= 1 }
+        lock.withLock { swiftUICancellable = cancellable }
       }
     #endif
   }
@@ -341,13 +394,16 @@ extension Shared: CustomStringConvertible {
 
 extension Shared: Equatable where Value: Equatable {
   public static func == (lhs: Self, rhs: Self) -> Bool {
-    func open<T: MutableReference<Value>>(_ lhsReference: T) -> Bool {
-      @Dependency(\.snapshots) var snapshots
-      guard snapshots.isAsserting, lhsReference == rhs.reference as? T else { return false }
-      snapshots.untrack(lhsReference)
-      return true
+    func openLhs<T: MutableReference<Value>>(_ lhsReference: T) -> Bool {
+      // NB: iOS <16 does not support casting this existential, so we must open it explicitly
+      func openRhs<S: MutableReference<Value>>(_ rhsReference: S) -> Bool {
+        lhsReference == rhsReference as? T
+      }
+      return openRhs(rhs.reference)
     }
-    if open(lhs.reference) {
+    @Dependency(\.snapshots) var snapshots
+    if snapshots.isAsserting, openLhs(lhs.reference) {
+      snapshots.untrack(lhs.reference)
       return lhs.wrappedValue == rhs.reference.wrappedValue
     } else {
       return lhs.wrappedValue == rhs.wrappedValue

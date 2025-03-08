@@ -61,7 +61,7 @@ if remoteConfig.isToggleEnabled {
 
 ### Creating a shared reader
 
-- ``constant(_:)``
+- ``init(value:)``
 - ``init(projectedValue:)``
 
 ### Transforming a shared value
@@ -76,9 +76,20 @@ if remoteConfig.isToggleEnabled {
 - ``wrappedValue``
 - ``projectedValue``
 
-### Reloading the value
+### Loading the value
 
+- ``isLoading``
 - ``load()``
+- ``load(_:)``
+- ``init(require:)``
+
+### Error handling
+
+- ``loadError``
+
+### SwiftUI integration
+
+- ``Swift/RangeReplaceableCollection``
 
 ### Combine integration
 

@@ -13,9 +13,12 @@ the "isOn" key in user defaults will be immediately played back to the `@Shared`
 test proves:
 
 ```swift
-@Test func externalWrite() {
+@Test(.dependency(\.defaultAppStorage, .liveValue))
+func externalWrite() {
+  UserDefaults.standard.removeObject(forKey: "isOn")
+
   @Shared(.appStorage("isOn")) var isOn = true
-  #expect(isOn == true)  
+  #expect(isOn == true)
   UserDefaults.standard.set(false, forKey: "isOn")
   #expect(isOn == false)
 }
@@ -43,12 +46,11 @@ That will make it so that all `@Shared(.appStorage)` instances use your custom u
 In previews `@Shared` will use a temporary, ephemeral user defaults so that each run of the preview
 gets a clean slate. This makes it so that previews do not mutate each other's storage and allows
 you to fully control how your previews behave. If you want to use the `standard` user defaults
-in previews you can use the `dependency` preview trait:
+in previews you can use `prepareDependencies`:
 
 ```swift
-#Preview(
-  traits: .dependency(\.defaultAppStorage, .standard)
-) {
+#Preview {
+  let _ = prepareDependencies { $0.defaultAppStorage = .standard }
   // ...
 }
 ```
@@ -56,11 +58,11 @@ in previews you can use the `dependency` preview trait:
 And finally, in tests `@Shared` will also use a temporary, ephemeral user defaults. This makes it
 so that each test runs in a sandboxed environment that does not interfere with other tests or the 
 simulator. A benefit of this is that your tests can pass deterministically and tests can be run
-in parallel. If you want to use the `standard` user defaults in tests you can use the 
-`dependency` test trait:
+in parallel. If you want to use the `standard` user defaults in tests you can use the `dependency`
+test trait:
 
 ```swift
-#Test(.dependency(\.defaultAppStorage, .standard)) 
+@Test(.dependency(\.defaultAppStorage, .standard))
 func basics() {
   // ...
 }

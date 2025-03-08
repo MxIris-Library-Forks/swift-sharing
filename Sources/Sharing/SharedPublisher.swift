@@ -15,7 +15,9 @@
     /// }
     /// ```
     public var publisher: some Publisher<Value, Never> {
-      reference.publisher.eraseToAnyPublisher()
+      box.subject
+        .handleEvents(receiveSubscription: { [box] _ in _ = box })
+        .prepend(wrappedValue)
     }
   }
 
@@ -33,7 +35,13 @@
     /// }
     /// ```
     public var publisher: some Publisher<Value, Never> {
-      reference.publisher.eraseToAnyPublisher()
+      box.subject
+        .handleEvents(receiveSubscription: { [box] _ in _ = box })
+        .prepend(wrappedValue)
     }
   }
 #endif
+
+enum SharedPublisherLocals {
+  @TaskLocal static var isLoading = false
+}

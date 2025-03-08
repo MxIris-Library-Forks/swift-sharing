@@ -14,10 +14,12 @@ import Testing
 
     tracker.assert {
       #expect($count != $count)
-      #expect(diff($count, $count) == """
-        - #1 0
-        + #1 1
-        """)
+      #expect(
+        diff($count, $count) == """
+          - #1 0
+          + #1 1
+          """
+      )
 
       $count.withLock { $0 = 1 }
 
@@ -76,6 +78,30 @@ import Testing
     }
   }
 
+  @Test func assertedChanges() {
+    @Shared(value: 0) var count
+
+    let counts = Mutex<[Int]>([])
+    let cancellable = $count.publisher.sink { @Sendable value in
+      counts.withLock { $0.append(value) }
+    }
+    defer { _ = cancellable }
+
+    let tracker = SharedChangeTracker()
+    tracker.track {
+      $count.withLock { $0 += 1 }
+    }
+
+    tracker.assert {
+      #expect($count != $count)
+
+      $count.withLock { $0 = 1 }
+
+      #expect($count == $count)
+      #expect(counts.withLock(\.self) == [0 ,1])
+    }
+  }
+
   @Test func unassertedChanges() {
     @Shared(value: 0) var count
 
@@ -99,6 +125,24 @@ import Testing
     let tracker = SharedChangeTracker(reportUnassertedChanges: false)
     tracker.track {
       $count.withLock { $0 += 1 }
+    }
+  }
+
+  @Test func unwrappedShared() {
+    let optionalShared = Shared<Int?>(value: 1)
+    let unwrappedShared = Shared(optionalShared)!
+
+    withKnownIssue {
+      do {
+        let tracker = SharedChangeTracker()
+        tracker.track {
+          unwrappedShared.withLock { $0 += 1 }
+        }
+      }
+    } matching: {
+      $0.description == """
+        Issue recorded: Tracked unasserted changes to 'Shared<Int?>(value: Optional(2))': Optional(1) → Optional(2)
+        """
     }
   }
 }

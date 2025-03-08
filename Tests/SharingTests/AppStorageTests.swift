@@ -42,6 +42,15 @@
       #expect(url == URL(fileURLWithPath: "/tmp"))
     }
 
+    @Test func optionalURL() {
+      @Shared(.appStorage("url")) var url: URL? = URL(fileURLWithPath: "/dev")
+      #expect(store.url(forKey: "url") == URL(fileURLWithPath: "/dev"))
+      store.set(URL(fileURLWithPath: "/tmp"), forKey: "url")
+      #expect(url == URL(fileURLWithPath: "/tmp"))
+      $url.withLock { $0 = nil }
+      #expect(url == nil)
+    }
+
     @Test func data() {
       @Shared(.appStorage("data")) var data = Data([4, 2])
       #expect(store.data(forKey: "data") == Data([4, 2]))
@@ -184,18 +193,59 @@
 
     @Test func testPersistenceKeySubscription() async throws {
       let persistenceKey: AppStorageKey<Int> = .appStorage("shared")
-      let changes = LockIsolated<[Int?]>([])
-      var subscription: Optional = persistenceKey.subscribe(initialValue: nil) { value in
-        changes.withValue { $0.append(value) }
-      }
+      let changes = Mutex<[Result<Int?, any Error>]>([])
+      var subscription: Optional = persistenceKey.subscribe(
+        context: .userInitiated,
+        subscriber: SharedSubscriber { value in
+          changes.withLock { $0.append(value) }
+        }
+      )
       @Dependency(\.defaultAppStorage) var userDefaults
       userDefaults.set(1, forKey: "shared")
       userDefaults.set(42, forKey: "shared")
       subscription?.cancel()
       userDefaults.set(123, forKey: "shared")
       subscription = nil
-      #expect([1, 42] == changes.value)
-      #expect(123 == persistenceKey.load(initialValue: nil))
+      #expect(try [1, 42] == changes.withLock { $0 }.map { try $0.get() })
+      await confirmation { confirm in
+        persistenceKey.load(
+          context: .userInitiated,
+          continuation: LoadContinuation { result in
+            let success = try? result.get()
+            #expect(success == 123)
+            confirm()
+          }
+        )
+      }
     }
+
+    #if DEBUG
+      @Test func suiteWarning() {
+        let suiteName = NSTemporaryDirectory() + "suite-warning"
+        @Shared(.appStorage("count", store: UserDefaults(suiteName: suiteName)!)) var count = 0
+        withKnownIssue {
+          @Shared(.appStorage("count", store: UserDefaults(suiteName: suiteName)!)) var count = 0
+        } matching: {
+          $0.description.hasSuffix(
+            """
+            '@Shared(.appStorage("count"))' was given a new store object for an existing suite \
+            name ("\(suiteName)").
+
+            Shared app storage for a given suite should all share the same store object to ensure \
+            synchronization and observation. For example, define a store as a 'static let' and \
+            refer to this single instance when creating shared app storage:
+
+                extension UserDefaults {
+                  nonisolated(unsafe) static let mySuite = UserDefaults(
+                    suiteName: "\(suiteName)"
+                  )!
+                }
+
+                @Shared(.appStorage("count", store: .mySuite) var myProperty
+            """
+          )
+        }
+      }
+    #endif
   }
 #endif

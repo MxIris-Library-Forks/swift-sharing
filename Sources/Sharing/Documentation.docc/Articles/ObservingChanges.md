@@ -46,10 +46,34 @@ struct CounterView: View {
 In each of these cases the view will automatically re-compute its body when the shared state 
 changes.
 
+> Important: 
+> There is one nuance to be aware of when using [`@Shared`](<doc:Shared>) and 
+> [`@SharedReader`](<doc:SharedReader>) directly in a SwiftUI view. When the view is recreated 
+> (which can happen many times and is an intentional design of SwiftUI), the corresponding 
+> `@Shared` and `@SharedReader` wrappers can also be created.
+> 
+> If you dynamically change the key of the property wrapper in the view, for example like this:
+> 
+> ```swift
+> $value.load(.newKey)
+> // or…
+> $value = Shared(.newKey)
+> ```
+> 
+> …then this key may be reset when the view is recreated. In order to prevent this you can use the
+> version of `Shared` and `SharedReader` that works like `@State` in views:
+> 
+> ```swift
+> @State.Shared(.key) var value
+> ```
+> 
+> See ``SwiftUICore/State/Shared`` and ``SwiftUICore/State/SharedReader`` for more info.
+
 ## Publisher of values
 
 It is possible to get a Combine publisher of changes in a piece of shared state. Every `Shared` 
-value has a ``Shared/publisher`` property, which emits every time the shared state changes:
+value has a ``Shared/publisher`` property, which emits the value every time the shared state
+changes:
 
 ```swift
 class Model {
@@ -58,15 +82,15 @@ class Model {
   var cancellables: Set<AnyCancellable> = []
   func startObservation() {
     $count.publisher.sink { count in
-      print("count changes to", count)
+      print("count is now", count)
     }
     .store(in: &cancellables)
   }
 }
 ```
 
-You must be careful to not further mutate the shared state from within `sink`, otherwise you run
-the risk of an infinite loop.
+> Important: You must be careful to not further mutate the shared state from within `sink`,
+> otherwise you run the risk of an infinite loop.
 
 ## UIKit
 

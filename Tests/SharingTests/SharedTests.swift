@@ -5,6 +5,14 @@ import Sharing
 import Testing
 
 @Suite struct SharedTests {
+  @Test func projectedValue() {
+    @Shared(.inMemory("count")) var count = 0
+    let shared = $count
+
+    $count = Shared(wrappedValue: 42, .inMemory("anotherCount"))
+    #expect(shared.wrappedValue == 42)
+  }
+
   @Suite struct Persistence {
     @Test func laziness() {
       do {
@@ -177,13 +185,13 @@ import Testing
 
         #expect(
           $count.description == """
-            Shared<Int>(AppStorageKey<Int>.Default[.appStorage("count"), default: 0])
+            Shared<Int>(.appStorage("count"))
             """
         )
 
         #expect(
           SharedReader($count).description == """
-            SharedReader<Int>(AppStorageKey<Int>.Default[.appStorage("count"), default: 0])
+            SharedReader<Int>(.appStorage("count"))
             """
         )
       }
@@ -192,20 +200,20 @@ import Testing
 
         #expect(
           $count.description == """
-            Shared<Int>(AppStorageKey<Int>.Default[.appStorage("count"), default: 0])
+            Shared<Int>(.appStorage("count"))
             """
         )
 
         #expect(
           SharedReader($count).description == """
-            SharedReader<Int>(AppStorageKey<Int>.Default[.appStorage("count"), default: 0])
+            SharedReader<Int>(.appStorage("count"))
             """
         )
       }
     }
 
     @Test func fileStorageDescription() {
-      @Shared(.fileStorage(URL(filePath: "/"))) var count = 0
+      @Shared(.fileStorage(URL(fileURLWithPath: "/"))) var count = 0
 
       #expect($count.description == #"Shared<Int>(.fileStorage(file:///))"#)
     }

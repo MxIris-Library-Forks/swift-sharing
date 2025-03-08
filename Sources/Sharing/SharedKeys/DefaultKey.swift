@@ -32,6 +32,11 @@ public struct _SharedKeyDefault<Base: SharedReaderKey>: SharedReaderKey {
     base.id
   }
 
+  /// The default value this key was initialized with.
+  public var initialValue: Base.Value {
+    defaultValue()
+  }
+
   /// Wraps an existing shared key in a shared key that provides a default value.
   ///
   /// - Parameters:
@@ -45,21 +50,20 @@ public struct _SharedKeyDefault<Base: SharedReaderKey>: SharedReaderKey {
     Self(base: key, defaultValue: value)
   }
 
-  public func load(initialValue: Base.Value?) -> Base.Value? {
-    base.load(initialValue: initialValue)
+  public func load(context: LoadContext<Base.Value>, continuation: LoadContinuation<Base.Value>) {
+    base.load(context: context, continuation: continuation)
   }
 
   public func subscribe(
-    initialValue: Base.Value?,
-    didSet receiveValue: @escaping @Sendable (Base.Value?) -> Void
+    context: LoadContext<Base.Value>, subscriber: SharedSubscriber<Base.Value>
   ) -> SharedSubscription {
-    base.subscribe(initialValue: initialValue, didSet: receiveValue)
+    base.subscribe(context: context, subscriber: subscriber)
   }
 }
 
 extension _SharedKeyDefault: SharedKey where Base: SharedKey {
-  public func save(_ value: Value, immediately: Bool) {
-    base.save(value, immediately: immediately)
+  public func save(_ value: Base.Value, context: SaveContext, continuation: SaveContinuation) {
+    base.save(value, context: context, continuation: continuation)
   }
 }
 

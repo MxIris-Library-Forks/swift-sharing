@@ -17,10 +17,13 @@ Further, any change made to the file stored at the URL will also be immediately 
 the `@Shared` value, as this test proves:
 
 ```swift
-@Test func externalWrite() throws {
-  let url = URL.temporaryDirectory.appending(component: "is-on.json") 
+@Test(.dependency(\.defaultFileStorage, .fileSystem))
+func externalWrite() throws {
+  let url = URL.temporaryDirectory.appending(component: "is-on.json")
+  try? FileManager.default.removeItem(at: url)
+
   @Shared(.fileStorage(url)) var isOn = true
-  #expect(isOn == true)  
+  #expect(isOn == true)
   try Data("false".utf8).write(to: url)
   #expect(isOn == false)
 }
@@ -38,13 +41,12 @@ file system. This makes it possible for previews and tests to operate in their o
 environment so that changes made to files do not spill over to other previews or tests, or the
 simulator. It also allows your tests to pass deterministically and for tests to be run in parallel.
 
-If you really do want to use the live file system in your previews, you can use the `dependency`
-preview trait:
+If you really do want to use the live file system in your previews, you can use
+`prepareDependencies`:
 
 ```swift
-#Preview(
-  traits: .dependency(\.defaultFileSystem, .inMemory)
-) {
+#Preview {
+  let _ = prepareDependencies { $0.defaultFileStorage = .fileSystem }
   // ...
 }
 ```
@@ -52,7 +54,7 @@ preview trait:
 And if you want to use the live file system in your tests you can use the `dependency` test trait:
 
 ```swift
-#Test(.dependency(\.defaultFileStorage, .inMemory)) 
+@Test(.dependency(\.defaultFileStorage, .fileSystem))
 func basics() {
   // ...
 }
